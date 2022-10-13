@@ -1,0 +1,89 @@
+from collections import OrderedDict
+from copy import deepcopy
+import simuPOP as sp
+#import seaborn as sns
+#import matplotlib.pyplot as plt
+
+num_loci=10
+pop_size=1000
+num_gens=101
+init_ops=OrderedDict()
+pre_ops=OrderedDict()
+post_ops=OrderedDict()
+
+def init_accumulators(pop, param):
+    accumulators=param
+    for accumulator in accumulators:
+        pop.vars()[accumulator]=[]
+    return True
+
+def update_accumulator(pop, param):
+    accumulator, var=param
+    pop.vars()[accumulator].append(deepcopy(pop.vars()[var]))
+    return True
+
+pops=sp.Population(
+    pop_size, loci=[1]*num_loci,
+    infoFields=['fitness'])
+
+def create_derived_by_count(pop, param):
+    locus, cnt=param
+    for i, ind in enumerate(pop.individuals()):
+        for marker in range(pop.totNumLoci()):
+            if i<cnt and locus==marker:
+                ind.setAllele(1, marker, 0)
+            else:
+                ind.setAllele(0, marker, 0)
+        ind.setAllele(0, marker, 1)
+    return True
+init_ops['Sex']=sp.InitSex()
+init_ops['Freq-sel']=sp.PyOperator(
+    create_derived_by_count, param=(0, 10))
+init_ops['Freq-neutral']=sp.InitGenotype(
+    freq=[0.5, 0.5], loci=range(1, num_loci))
+post_ops['Stat-freq']=sp.Stat(alleleFreq=sp.ALL_AVAIL)
+post_ops['Stat-freq-eval']=sp.PyEval(
+    r"'%d %.3f\n' % (gen, alleleFreq[0][1])",
+    reps=[0], step=10)
+mating_scheme=sp.RandomMating()
+
+ms=sp.MapSelector(
+    loci=0, fitness={
+        (0, 0): 0.90,
+        (0, 1): 1,
+        (1, 1): 1})
+pre_ops['Selection']=ms
+
+def get_freq_deriv(pop, param):
+    marker, name=param
+    expHe={}
+    pop.vars()[name]=pop.dvars().alleleFreq[marker][1]
+    return True
+init_ops['accumulators']=sp.PyOperator(
+    init_accumulators,
+    param=['freq_sel'])
+post_ops['FreqSel']=sp.PyOperator(
+    get_freq_deriv, param=(0, 'freqDeriv'))
+post_ops['freq_sel_accumulation']=sp.PyOperator(
+    update_accumulator, param=('freq_sel', 'freqDeriv'))
+sim=sp.Simulator(pops, rep=100)
+sim.evolve(
+    initOps=list(init_ops.values()),
+    preOps=list(pre_ops.values()),
+    postOps=list(post_ops.values()),
+    matingScheme=mating_scheme,
+    gen=num_gens)
+
+#sns.set_style('white')
+#fig=plt.figure(figsize=(16,9))
+#ax=fig.add_subplot(111)
+#ax.set_title(
+  #  'Frequency of selected alleles '
+    #+ 'in 100 replicates over time')
+#ax.set_xlabel('Generation')
+#ax.set_ylabel('Frequency of selected allele')
+
+#for pop in sim.populations():
+  #  ax.plot(pop.vars()['freq_sel'])
+
+# 표시를 지우고 수행할 것
